@@ -6,3 +6,25 @@
   font-weight: 400;
   font-style: normal;
 }
+
+
+.hero {
+    position: relative;
+    isolation: isolate;
+    height: 90vh;
+}
+
+.hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+
+    background-image: url('./assets/world-map.svg');
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+
+    opacity: 0.45; /* Adjust background opacity */
+    z-index: -1;
+}
+
