@@ -28,3 +28,7 @@
     z-index: -1;
 }
 
+.footerMainBox p, img{
+    margin-top: 1rem;
+    color: gray;
+}

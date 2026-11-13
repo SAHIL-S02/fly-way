@@ -121,7 +121,7 @@ const Others = () => {
             <div className='my-20 h-12 flex justify-center text-xl'>
                 <button type='submit' className='px-5 h-full bg-[#605DEC] rounded-md text-[#ffffff] hover:bg-[#2e2bc8]'>Explore more stays</button>
             </div>
-
+            
 
         </div>
     )
