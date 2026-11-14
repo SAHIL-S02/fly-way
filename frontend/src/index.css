@@ -28,7 +28,32 @@
     z-index: -1;
 }
 
-.footerMainBox p, img{
+.footerMainBox p, .footerMainBox img{
     margin-top: 1rem;
     color: gray;
+}
+
+
+/* Hide scrollbar but keep scrolling */
+.scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none;    /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;            /* Chrome, Safari */
+}
+
+
+
+@keyframes popup {
+    from {
+        opacity: 0;
+        transform: scale(0.8) translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
 }
