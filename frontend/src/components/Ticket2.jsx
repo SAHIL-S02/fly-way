@@ -46,6 +46,26 @@ const bookedPattern = {
     27:["A", "B", "C"]
 };
 
+// Seat pricing for the 2-3-2 configuration (A B | D E F | G H).
+// Exit rows have extra legroom; A/H are window seats; B/D/F/G are aisle seats.
+const EXTRA_LEGROOM_ROWS = [6, 14];
+
+const getSeatPricing = (rowNumber, seatLetter) => {
+    if (EXTRA_LEGROOM_ROWS.includes(rowNumber)) {
+        return { category: "Extra Legroom", price: 23500 };
+    }
+
+    if (["A", "H"].includes(seatLetter)) {
+        return { category: "Window", price: 13250 };
+    }
+
+    if (["B", "D", "F", "G"].includes(seatLetter)) {
+        return { category: "Aisle", price: 11050 };
+    }
+
+    return { category: "Standard", price: 0 };
+};
+
 const createEmptyPassenger = () => ({
     name: "",
     age: "",
@@ -126,10 +146,19 @@ const Ticket2 = () => {
             )
         );
     };
-    const selectedSeats = seats.flatMap(row =>
+    const selectedSeatDetails = seats.flatMap(row =>
         SEAT_LETTERS
             .filter(letter => row.seats[letter] === "sel")
-            .map(letter => `${row.row}${letter}`)
+            .map(letter => ({
+                seat: `${row.row}${letter}`,
+                ...getSeatPricing(row.row, letter)
+            }))
+    );
+
+    const selectedSeats = selectedSeatDetails.map(seat => seat.seat);
+    const totalSeatCost = selectedSeatDetails.reduce(
+        (total, seat) => total + seat.price,
+        0
     );
     // Handle seat selection
     const handleSelection = (rowNumber, seatLetter) => {
@@ -177,7 +206,7 @@ const Ticket2 = () => {
     const getSeatStyle = (status) => {
 
         if (status === "booked") {
-            return "bg-[#E9E8FC] cursor-not-allowed";
+            return "bg-[#E9E8FC] text-[#8583A7] cursor-not-allowed";
         }
 
         if (status === "sel") {
@@ -187,8 +216,10 @@ const Ticket2 = () => {
         return "bg-[#423EE1] cursor-pointer";
     };
 
-    // Render individual seat
+    // Render each seat with its category price inside the aircraft diagram.
     const renderSeat = (rowNumber, letter, status) => {
+        const { category, price } = getSeatPricing(rowNumber, letter);
+        const priceLabel = price === 0 ? "FREE" : `₹${price}`;
 
         return (
             <button
@@ -196,19 +227,23 @@ const Ticket2 = () => {
                 type="button"
                 disabled={status === "booked"}
                 onClick={() => handleSelection(rowNumber, letter)}
-                aria-label={`Row ${rowNumber}, seat ${letter}, ${status}`}
+                title={`${rowNumber}${letter} · ${category} · ${priceLabel}`}
+                aria-label={`Row ${rowNumber}, seat ${letter}, ${status}, ${category}, ${priceLabel}`}
                 className={`
-                    w-6 h-9
+                    w-8 h-12
                     rounded-md
-                    flex justify-center items-center
+                    flex flex-col justify-center items-center gap-1
+                    font-semibold leading-none
                     transition-colors
                     ${getSeatStyle(status)}
                 `}
             >
-                {status === "sel" ? "✓" : ""}
+                <span className="text-[10px]">{letter}</span>
+                <span className="text-[7px] whitespace-nowrap">{priceLabel}</span>
             </button>
         );
     };
+
 
     return (
         <div className='flex '>
@@ -257,6 +292,16 @@ const Ticket2 = () => {
                             Have a safe journey!
                         </p>
 
+                        <div className="w-full mt-5 rounded-xl bg-indigo-50 px-5 py-4 text-center">
+                            <p className="text-sm text-gray-500">Total seat-selection cost</p>
+                            <p className="text-2xl font-bold text-[#635BEE]">
+                                ₹{totalSeatCost.toLocaleString("en-IN")}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                                {selectedSeatDetails.length} seat(s) selected
+                            </p>
+                        </div>
+
                         {/* Close Button */}
                         <button
                             onClick={() => setShowBookedModal(false)}
@@ -281,7 +326,7 @@ const Ticket2 = () => {
             )}
             <div className='leftSide1 w-[50%] flex justify-center'>
 
-                <div className='w-90 h-480 bg-[#C6CAFF] rounded-t-full rounded-b-full pt-20 pb-8 flex flex-col flex-wrap items-center'>
+                <div className='w-100 h-580 bg-[#C6CAFF] rounded-t-full rounded-b-full pt-20 pb-8 flex flex-col flex-wrap items-center'>
 
                     {/* Windows */}
                     <div className='windows flex justify-between h-10 w-[50%] mb-4'>
@@ -309,7 +354,7 @@ const Ticket2 = () => {
                                                 {group.map(letter => (
                                                     <span
                                                         key={letter}
-                                                        className='w-6 text-center text-sm font-bold text-[#8294B9]'
+                                                        className='w-8 text-center text-sm font-bold text-[#8294B9]'
                                                     >
                                                         {letter}
                                                     </span>
@@ -435,22 +480,35 @@ const Ticket2 = () => {
                         </div>
                     </div>
                     <div className='px-5 py-5'>
-                        {/* Seat Info */}
-                        <div className='flex justify-between w-[60%] mt-2 mb-8'>
-                            <div className='flex items-center'>
-                                <div className='w-6 h-9 bg-[#E9E8FC] rounded-md mx-2 shadow-md'>
-                                </div>
-                                <p className='mx-2 text-gray-500 text-sm'>Already Booked</p>
+                        {/* Seat status and pricing legend */}
+                        <div className="w-full flex flex-wrap items-center gap-x-5 gap-y-3 mt-2 mb-6">
+                            <div className="flex items-center gap-2">
+                                <div className="w-5 h-7 bg-[#E9E8FC] rounded-md shadow-sm" />
+                                <p className="text-gray-500 text-xs">Booked</p>
                             </div>
-                            <div className='flex items-center'>
-                                <div className='w-6 h-9 bg-[#423EE1] rounded-md mx-2 shadow-md'>
-                                </div>
-                                <p className='mx-2 text-gray-500 text-sm'>Available</p>
+                            <div className="flex items-center gap-2">
+                                <div className="w-5 h-7 bg-[#423EE1] rounded-md shadow-sm" />
+                                <p className="text-gray-500 text-xs">Available</p>
                             </div>
-                            <div className='flex items-center'>
-                                <div className='w-6 h-9 bg-[#ED5D7C] rounded-md mx-2 shadow-md'>
-                                </div>
-                                <p className='mx-2 text-gray-500 text-sm'>Selected by you</p>
+                            <div className="flex items-center gap-2">
+                                <div className="w-5 h-7 bg-[#ED5D7C] rounded-md shadow-sm" />
+                                <p className="text-gray-500 text-xs">Selected</p>
+                            </div>
+                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">Standard · FREE</span>
+                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">Aisle · ₹150</span>
+                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">Window · ₹250</span>
+                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">Extra legroom · ₹350</span>
+                        </div>
+
+                        {/* Live seat cost summary */}
+                        <div className="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 mb-5">
+                            <div>
+                                <p className="text-sm font-semibold text-gray-700">Selected seats</p>
+                                <p className="text-xs text-gray-500">{selectedSeatDetails.length} of {passengerCount} seat(s)</p>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xs text-gray-500">Total seat cost</p>
+                                <p className="text-xl font-bold text-[#635BEE]">₹{totalSeatCost.toLocaleString("en-IN")}</p>
                             </div>
                         </div>
                         {/* Passengers Info */}
@@ -647,17 +705,18 @@ const Ticket2 = () => {
 
                                             </div>
 
-                                            {/* Seat Number */}
+                                            {/* Seat Number and Price */}
                                             <div className="flex flex-col gap-1 min-w-[100px]">
-
-                                                <p className="text-gray-400 text-base">
-                                                    Seat number
-                                                </p>
-
-                                                <h2 className="text-gray-600 text-xl font-medium">
+                                                <p className="text-gray-400 text-sm">Seat number</p>
+                                                <h2 className="text-gray-600 text-lg font-medium">
                                                     {selectedSeats[index] || "Not selected"}
                                                 </h2>
-
+                                                <p className="text-gray-400 text-xs">Seat price</p>
+                                                <h3 className="text-gray-700 text-sm font-semibold">
+                                                    {selectedSeatDetails[index]
+                                                        ? `₹${selectedSeatDetails[index].price.toLocaleString("en-IN")}`
+                                                        : "—"}
+                                                </h3>
                                             </div>
 
                                         </div>
@@ -666,8 +725,14 @@ const Ticket2 = () => {
 
                                 </div>
 
-                                {/* Action Buttons */}
+                                {/* Total and Action Buttons */}
                                 <div className="flex items-center gap-4 shrink-0">
+                                    <div className="flex flex-col min-w-[105px]">
+                                        <span className="text-xs text-gray-400">Total seat cost</span>
+                                        <strong className="text-xl text-[#635BEE]">
+                                            ₹{totalSeatCost.toLocaleString("en-IN")}
+                                        </strong>
+                                    </div>
 
                                     <button
                                         type="button"
