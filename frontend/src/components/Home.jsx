@@ -23,8 +23,8 @@ const Home = () => {
     const minDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
     const navigate = useNavigate();
-    const handleTicket = (e)=>{
-        navigate('/ticket');
+    const handleTicket = (layout)=>{
+        navigate(layout==1 ? "/ticket":"/ticket2");
     }
 
     const [fillData, setFillData] = useState({
@@ -113,9 +113,9 @@ const Home = () => {
                     
                     <button type='submit' className='w-[10%] bg-[#605DEC] rounded-md text-[#ffffff] hover:bg-[#2e2bc8]'>Search</button>
                 </form>
-                <div onClick={handleTicket} className={`flightList cursor-pointer ${!search? "hidden":""} w-[70%] m-5 mt-20 p-5 rounded-2xl overflow-x-hidden overflow-y-auto scrollbar-hide border-[#CBD4E6] border shadow-md bg-white`}>
+                <div className={`flightList cursor-pointer ${!search? "hidden":""} w-[70%] m-5 mt-20 p-5 rounded-2xl overflow-x-hidden overflow-y-auto scrollbar-hide border-[#CBD4E6] border shadow-md bg-white`}>
                     {allFlightData.map((flight) =>(
-                        <div key={flight.id} className='w-full flex justify-between px-3 py-2 my-3 border-b-2 border-[#CBD4E6]'>
+                        <div key={flight.id} onClick={() => handleTicket(flight.layout)} className='w-full flex justify-between px-3 py-2 my-3 border-b-2 border-[#CBD4E6]'>
                             {/* name logo */}
                             <div className='logoName flex gap-4 px-4'>
                                 <div className='logo size-8 rounded-full m-0 bg-amber-600 text-center font-extrabold text-2xl'>

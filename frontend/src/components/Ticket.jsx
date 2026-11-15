@@ -5,7 +5,7 @@ import React, { useContext, useEffect, useState } from 'react';
 
 
 
-const SEAT_LETTERS = ["A", "B", "C", "D", "E", "F"];
+const SEAT_LETTERS = ["A", "B", "C", "D", "E"];
 
 // Initial booked seats matching the reference layout
 const bookedPattern = {
@@ -13,15 +13,15 @@ const bookedPattern = {
     3:["D", "A", "B"],
     4:["A", "B"],
     5:["E", "C", "B"],
-    6: ["D", "F"],
-    7: ["C", "F"],
-    8: ["B", "C", "D", "F"],
+    6: ["D"],
+    7: ["C"],
+    8: ["B", "C", "D"],
     9: ["A", "B", "D"],
-    10: ["B", "F"],
-    11: ["A", "F"],
+    10: ["B"],
+    11: ["A"],
     12: ["C"],
-    13: ["A", "D", "F"],
-    14: ["A", "B", "D", "F"],
+    13: ["A", "D"],
+    14: ["A", "B", "D"],
     15:["E", "A", "B"],
     16:["A", "B"],
     17:["D", "C", "B"],
@@ -44,7 +44,7 @@ const createEmptyPassenger = () => ({
 });
 
 
-// Generate 28 rows with 6 seats each
+// Generate 28 rows with 5 seats each
 const createSeats = () => {
     return Array.from({ length: 28 }, (_, index) => {
         const rowNumber = index + 1;
@@ -285,8 +285,18 @@ const Ticket = () => {
 
                             <div className='flex flex-col gap-3 py-2 rounded-t-[80%]'>
 
-                                {seats.map((row) => (
+                                {/* Column labels follow the 3-seat / aisle / 2-seat layout */}
+                                <div className='grid grid-cols-[repeat(3,minmax(0,1fr))_32px_repeat(2,minmax(0,1fr))] items-center px-1 mb-1 text-sm font-bold text-[#27273F]'>
+                                    {["A", "B", "C"].map(letter => (
+                                        <p key={letter} className='text-center'>{letter}</p>
+                                    ))}
+                                    <span aria-hidden='true' />
+                                    {["D", "E"].map(letter => (
+                                        <p key={letter} className='text-center'>{letter}</p>
+                                    ))}
+                                </div>
 
+                                {seats.map((row) => (
                                     <React.Fragment key={row.row}>
 
                                         {/* Exit row indicator */}
@@ -299,46 +309,34 @@ const Ticket = () => {
                                             </div>
                                         )}
 
-                                        {/* Actual seat row */}
-                                        <div className='flex items-center justify-between gap-1'>
-
-                                            {/* Left seats A B C */}
-                                            <div className='flex gap-1'>
-
-                                                {["A", "B", "C"].map(letter => (
-                                                    renderSeat(
+                                        {/* Three seats, a wider central aisle, then two seats */}
+                                        <div className='grid grid-cols-[repeat(3,minmax(0,1fr))_32px_repeat(2,minmax(0,1fr))] items-center px-1'>
+                                            {["A", "B", "C"].map(letter => (
+                                                <div key={letter} className='flex justify-center'>
+                                                    {renderSeat(
                                                         row.row,
                                                         letter,
                                                         row.seats[letter]
-                                                    )
-                                                ))}
+                                                    )}
+                                                </div>
+                                            ))}
 
-                                            </div>
+                                            {/* Central aisle */}
+                                            <span aria-hidden='true' />
 
-                                            {/* Row number */}
-                                            <span className='w-5 text-center text-[#8294B9]'>
-                                                {row.row}
-                                            </span>
-
-                                            {/* Right seats D E F */}
-                                            <div className='flex gap-1'>
-
-                                                {["D", "E", "F"].map(letter => (
-                                                    renderSeat(
+                                            {["D", "E"].map(letter => (
+                                                <div key={letter} className='flex justify-center'>
+                                                    {renderSeat(
                                                         row.row,
                                                         letter,
                                                         row.seats[letter]
-                                                    )
-                                                ))}
-
-                                            </div>
-
+                                                    )}
+                                                </div>
+                                            ))}
                                         </div>
 
                                     </React.Fragment>
-
                                 ))}
-
                             </div>
 
                         </div>
