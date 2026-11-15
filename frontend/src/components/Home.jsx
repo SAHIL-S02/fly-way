@@ -140,9 +140,12 @@ const Home = () => {
                                 </p>
                             </div>
                             {/* stops */}
-                            <div className='flex'>
-                                <p>
+                            <div className='flex flex-col'>
+                                <p className='font-bold'>
                                     {flight.stops == 0? "Non Stop":flight.stops+" " + "stop"}
+                                </p>
+                                <p className='text-xs text-gray-500'>
+                                    {flight.layout == 1? "3-2 Layout":"2-3-2 Layout"}
                                 </p>
                             </div>
                             {/*price*/}

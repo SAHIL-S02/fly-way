@@ -63,8 +63,43 @@ const getSeatPricing = (rowNumber, seatLetter) => {
         return { category: "Aisle", price: 11050 };
     }
 
-    return { category: "Standard", price: 0 };
+    return { category: "Standard", price: 9845 };
 };
+
+// Meal options are available independently for each passenger.
+const MEAL_OPTIONS = [
+    {
+        id: "vegetarian",
+        name: "Vegetarian Meal",
+        description: "A complimentary balanced vegetarian meal.",
+        price: 0
+    },
+    {
+        id: "fruit-snack",
+        name: "Fruit & Light Snack",
+        description: "Seasonal fruit with a light snack.",
+        price: 120
+    },
+    {
+        id: "paneer-meal",
+        name: "Paneer Meal",
+        description: "Paneer curry served with rice and bread.",
+        price: 180
+    },
+    {
+        id: "chicken-meal",
+        name: "Chicken Meal",
+        description: "Chicken curry served with rice and bread.",
+        price: 250
+    }
+];
+
+const formatCurrency = (amount) =>
+    new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        maximumFractionDigits: 0
+    }).format(amount);
 
 const createEmptyPassenger = () => ({
     name: "",
@@ -73,7 +108,10 @@ const createEmptyPassenger = () => ({
     email: "",
     phone: "",
     emergencyName: "",
-    emergencyPhone: ""
+    emergencyPhone: "",
+    assignedSeat: null,
+    mealRequired: null,
+    selectedMeal: ""
 });
 
 
@@ -111,8 +149,10 @@ const Ticket2 = () => {
     const [passengers, setPassengers] = useState(
         () => Array.from({ length: passengerCount }, createEmptyPassenger)
     );
+    const [selectedPassengerIndex, setSelectedPassengerIndex] = useState(null);
+    const [assignmentMessage, setAssignmentMessage] = useState("");
 
-    // Keep passenger state synchronized with passenger count
+    // Keep passenger records and their seat assignments synchronized with passenger count.
     useEffect(() => {
         setPassengers(prev =>
             Array.from(
@@ -120,6 +160,10 @@ const Ticket2 = () => {
                 (_, index) => prev[index] || createEmptyPassenger()
             )
         );
+        setSelectedPassengerIndex(current =>
+            current !== null && current < passengerCount ? current : null
+        );
+        setAssignmentMessage("");
     }, [passengerCount]);
 
 
@@ -146,89 +190,182 @@ const Ticket2 = () => {
             )
         );
     };
-    const selectedSeatDetails = seats.flatMap(row =>
-        SEAT_LETTERS
-            .filter(letter => row.seats[letter] === "sel")
-            .map(letter => ({
-                seat: `${row.row}${letter}`,
-                ...getSeatPricing(row.row, letter)
-            }))
-    );
 
-    const selectedSeats = selectedSeatDetails.map(seat => seat.seat);
+    // Ask each passenger whether they need a meal before showing the menu.
+    const handleMealPreference = (index, mealRequired) => {
+        setPassengers(prev =>
+            prev.map((passenger, i) =>
+                i === index
+                    ? {
+                        ...passenger,
+                        mealRequired,
+                        selectedMeal: mealRequired ? passenger.selectedMeal : ""
+                    }
+                    : passenger
+            )
+        );
+    };
+
+    const handleMealSelection = (index, mealId) => {
+        setPassengers(prev =>
+            prev.map((passenger, i) =>
+                i === index && passenger.mealRequired === true
+                    ? { ...passenger, selectedMeal: mealId }
+                    : passenger
+            )
+        );
+    };
+
+    const selectedPassenger = selectedPassengerIndex === null
+        ? null
+        : passengers[selectedPassengerIndex] || null;
+
+    // Each passenger owns at most one seat. This is the source of truth for
+    // assignments, so switching passengers never loses previous selections.
+    const selectedSeatDetails = passengers.map(passenger => {
+        if (!passenger.assignedSeat) return null;
+
+        const match = passenger.assignedSeat.match(/^(\d+)([A-H])$/);
+        if (!match) return null;
+
+        const rowNumber = Number(match[1]);
+        const letter = match[2];
+
+        return {
+            seat: passenger.assignedSeat,
+            row: rowNumber,
+            letter,
+            ...getSeatPricing(rowNumber, letter)
+        };
+    });
+
+    const assignedSeatCount = selectedSeatDetails.filter(Boolean).length;
     const totalSeatCost = selectedSeatDetails.reduce(
-        (total, seat) => total + seat.price,
+        (total, seat) => total + (seat?.price || 0),
         0
     );
-    // Handle seat selection
+
+    const selectedMealDetails = passengers.map(passenger => {
+        if (passenger.mealRequired !== true || !passenger.selectedMeal) return null;
+        return MEAL_OPTIONS.find(meal => meal.id === passenger.selectedMeal) || null;
+    });
+
+    const totalMealCost = selectedMealDetails.reduce(
+        (total, meal) => total + (meal?.price || 0),
+        0
+    );
+    const totalBookingCost = totalSeatCost + totalMealCost;
+
+    const getSeatStatus = (rowNumber, seatLetter) => {
+        const row = seats.find(item => item.row === rowNumber);
+        if (!row || row.seats[seatLetter] === "booked") return "booked";
+
+        const seatId = `${rowNumber}${seatLetter}`;
+        const assignedPassengerIndex = passengers.findIndex(
+            passenger => passenger.assignedSeat === seatId
+        );
+
+        if (assignedPassengerIndex === selectedPassengerIndex) return "sel";
+        if (assignedPassengerIndex !== -1) return "assigned";
+        return "avl";
+    };
+
+    // Assign a seat to the active passenger. Selecting a different available
+    // seat replaces their current one; clicking their own seat removes it.
     const handleSelection = (rowNumber, seatLetter) => {
-        setSeats(prevSeats => {
+        if (selectedPassengerIndex === null || !selectedPassenger) {
+            setAssignmentMessage("Select a passenger before choosing a seat.");
+            return;
+        }
 
-            const selectedRow = prevSeats.find(
-                row => row.row === rowNumber
+        const row = seats.find(item => item.row === rowNumber);
+        if (!row || row.seats[seatLetter] === "booked") {
+            setAssignmentMessage(`Seat ${rowNumber}${seatLetter} is already booked.`);
+            return;
+        }
+
+        const seatId = `${rowNumber}${seatLetter}`;
+        const assignedPassengerIndex = passengers.findIndex(
+            passenger => passenger.assignedSeat === seatId
+        );
+
+        if (assignedPassengerIndex === selectedPassengerIndex) {
+            setPassengers(prev =>
+                prev.map((passenger, index) =>
+                    index === selectedPassengerIndex
+                        ? { ...passenger, assignedSeat: null }
+                        : passenger
+                )
             );
+            setAssignmentMessage(`Seat ${seatId} removed from Passenger ${selectedPassengerIndex + 1}.`);
+            return;
+        }
 
-            if (!selectedRow) return prevSeats;
-
-            const currentStatus = selectedRow.seats[seatLetter];
-
-            if (currentStatus === "booked") {
-                return prevSeats;
-            }
-
-            const selectedCount = prevSeats.reduce(
-                (total, row) =>
-                    total + Object.values(row.seats).filter(
-                        status => status === "sel"
-                    ).length,
-                0
+        if (assignedPassengerIndex !== -1) {
+            setAssignmentMessage(
+                `Seat ${seatId} is already assigned to Passenger ${assignedPassengerIndex + 1}.`
             );
+            return;
+        }
 
-            if (currentStatus === "avl" && selectedCount >= passengerCount) {
-                return prevSeats;
-            }
+        setPassengers(prev =>
+            prev.map((passenger, index) =>
+                index === selectedPassengerIndex
+                    ? { ...passenger, assignedSeat: seatId }
+                    : passenger
+            )
+        );
+        setAssignmentMessage(`Seat ${seatId} assigned to Passenger ${selectedPassengerIndex + 1}.`);
+    };
 
-            return prevSeats.map(row => {
-                if (row.row !== rowNumber) return row;
+    const handleRemoveAssignedSeat = () => {
+        if (!selectedPassenger?.assignedSeat) return;
 
-                return {
-                    ...row,
-                    seats: {
-                        ...row.seats,
-                        [seatLetter]: currentStatus === "avl" ? "sel" : "avl"
-                    }
-                };
-            });
-        });
+        const removedSeat = selectedPassenger.assignedSeat;
+        setPassengers(prev =>
+            prev.map((passenger, index) =>
+                index === selectedPassengerIndex
+                    ? { ...passenger, assignedSeat: null }
+                    : passenger
+            )
+        );
+        setAssignmentMessage(`Seat ${removedSeat} removed from Passenger ${selectedPassengerIndex + 1}.`);
     };
 
     // Get seat colours
     const getSeatStyle = (status) => {
-
         if (status === "booked") {
             return "bg-[#E9E8FC] text-[#8583A7] cursor-not-allowed";
         }
-
         if (status === "sel") {
             return "bg-[#ED5D7C] cursor-pointer text-white";
         }
-
-        return "bg-[#423EE1] cursor-pointer";
+        if (status === "assigned") {
+            return "bg-[#8B83F6] cursor-not-allowed text-white";
+        }
+        return "bg-[#423EE1] cursor-pointer text-white";
     };
 
     // Render each seat with its category price inside the aircraft diagram.
     const renderSeat = (rowNumber, letter, status) => {
         const { category, price } = getSeatPricing(rowNumber, letter);
-        const priceLabel = price === 0 ? "FREE" : `₹${price}`;
+        const priceLabel = price === 0 ? "FREE" : `₹${price.toLocaleString("en-IN")}`;
+        const seatId = `${rowNumber}${letter}`;
+        const assignedPassengerIndex = passengers.findIndex(
+            passenger => passenger.assignedSeat === seatId
+        );
+        const ownerLabel = assignedPassengerIndex >= 0
+            ? `assigned to Passenger ${assignedPassengerIndex + 1}`
+            : status === "booked" ? "already booked" : "available";
 
         return (
             <button
                 key={letter}
                 type="button"
-                disabled={status === "booked"}
+                disabled={status === "booked" || status === "assigned"}
                 onClick={() => handleSelection(rowNumber, letter)}
-                title={`${rowNumber}${letter} · ${category} · ${priceLabel}`}
-                aria-label={`Row ${rowNumber}, seat ${letter}, ${status}, ${category}, ${priceLabel}`}
+                title={`${seatId} · ${category} · ${priceLabel} · ${ownerLabel}`}
+                aria-label={`Seat ${seatId}, ${status}, ${category}, ${priceLabel}, ${ownerLabel}`}
                 className={`
                     w-8 h-12
                     rounded-md
@@ -238,7 +375,9 @@ const Ticket2 = () => {
                     ${getSeatStyle(status)}
                 `}
             >
-                <span className="text-[10px]">{letter}</span>
+                <span className="text-[10px]">
+                    {status === "sel" ? "✓" : status === "assigned" ? `P${assignedPassengerIndex + 1}` : letter}
+                </span>
                 <span className="text-[7px] whitespace-nowrap">{priceLabel}</span>
             </button>
         );
@@ -292,14 +431,19 @@ const Ticket2 = () => {
                             Have a safe journey!
                         </p>
 
-                        <div className="w-full mt-5 rounded-xl bg-indigo-50 px-5 py-4 text-center">
-                            <p className="text-sm text-gray-500">Total seat-selection cost</p>
-                            <p className="text-2xl font-bold text-[#635BEE]">
-                                ₹{totalSeatCost.toLocaleString("en-IN")}
-                            </p>
-                            <p className="text-xs text-gray-400 mt-1">
-                                {selectedSeatDetails.length} seat(s) selected
-                            </p>
+                        <div className="w-full mt-5 rounded-xl bg-indigo-50 px-5 py-4">
+                            <div className="flex justify-between gap-4 text-sm text-gray-600">
+                                <span>Seat charges ({assignedSeatCount} seats)</span>
+                                <span>{formatCurrency(totalSeatCost)}</span>
+                            </div>
+                            <div className="flex justify-between gap-4 text-sm text-gray-600 mt-2">
+                                <span>Meal charges</span>
+                                <span>{formatCurrency(totalMealCost)}</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4 border-t border-indigo-100 mt-3 pt-3">
+                                <span className="font-semibold text-gray-700">Total booking cost</span>
+                                <span className="text-xl font-bold text-[#635BEE]">{formatCurrency(totalBookingCost)}</span>
+                            </div>
                         </div>
 
                         {/* Close Button */}
@@ -392,7 +536,7 @@ const Ticket2 = () => {
                                                             renderSeat(
                                                                 row.row,
                                                                 letter,
-                                                                row.seats[letter]
+                                                                getSeatStatus(row.row, letter)
                                                             )
                                                         ))}
                                                     </div>
@@ -416,10 +560,7 @@ const Ticket2 = () => {
 
             {/* Right side */}
             <div className='w-[50%]'>
-                <h1 className='absolute top-230 w-[50%] z-0 font-extrabold text-7xl text-center text-[#7A82F2]'>
-                    Flay Way
-                </h1>
-                <div className='sticky top-0 h-[100vh] border-l border-l-gray-300 bg-gradient-to-br
+                <div className='sticky top-0 h-300 border-l border-l-gray-300 bg-gradient-to-br
                     from-indigo-300/20
                     via-blue-200/10
                     to-purple-300/30
@@ -492,7 +633,11 @@ const Ticket2 = () => {
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="w-5 h-7 bg-[#ED5D7C] rounded-md shadow-sm" />
-                                <p className="text-gray-500 text-xs">Selected</p>
+                                <p className="text-gray-500 text-xs">Active passenger</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-5 h-7 bg-[#8B83F6] rounded-md shadow-sm" />
+                                <p className="text-gray-500 text-xs">Assigned to another passenger</p>
                             </div>
                             <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">Standard · FREE</span>
                             <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">Aisle · ₹150</span>
@@ -500,15 +645,87 @@ const Ticket2 = () => {
                             <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">Extra legroom · ₹350</span>
                         </div>
 
-                        {/* Live seat cost summary */}
-                        <div className="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 mb-5">
+                        {/* Passenger selector for seat assignment */}
+                        <div className="mb-5 rounded-xl border border-indigo-100 bg-white/80 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-800">Select passenger</h3>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Choose a passenger first, then click an available seat.
+                                    </p>
+                                </div>
+                                {selectedPassenger?.assignedSeat && (
+                                    <button
+                                        type="button"
+                                        onClick={handleRemoveAssignedSeat}
+                                        className="text-xs font-semibold text-rose-600 hover:text-rose-700 underline"
+                                    >
+                                        Remove assigned seat
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                {passengers.map((passenger, index) => (
+                                    <button
+                                        key={index}
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedPassengerIndex(index);
+                                            setAssignmentMessage("");
+                                        }}
+                                        aria-pressed={selectedPassengerIndex === index}
+                                        className={`rounded-lg border px-3 py-2 text-left transition-all ${
+                                            selectedPassengerIndex === index
+                                                ? "border-[#635BEE] bg-indigo-50 text-[#423EE1] ring-2 ring-indigo-100"
+                                                : "border-gray-200 bg-white text-gray-600 hover:border-indigo-200"
+                                        }`}
+                                    >
+                                        <span className="block text-xs font-semibold">
+                                            {passenger.name.trim() || `Passenger ${index + 1}`}
+                                        </span>
+                                        <span className="block text-[11px] mt-1">
+                                            {passenger.assignedSeat
+                                                ? `Seat ${passenger.assignedSeat}`
+                                                : "No seat assigned"}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs text-gray-600">
+                                    Active: <span className="font-semibold text-[#423EE1]">
+                                        {selectedPassenger
+                                            ? (selectedPassenger.name.trim() || `Passenger ${selectedPassengerIndex + 1}`)
+                                            : "None — select a passenger"}
+                                    </span>
+                                    {selectedPassenger
+                                        ? (selectedPassenger.assignedSeat
+                                            ? ` · Seat ${selectedPassenger.assignedSeat}`
+                                            : " · Choose a seat")
+                                        : " · Select a passenger before choosing a seat"}
+                                </p>
+                                {assignmentMessage && (
+                                    <p role="status" aria-live="polite" className="text-xs text-indigo-600">
+                                        {assignmentMessage}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Live seat, meal and booking cost summary */}
+                        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 mb-5">
                             <div>
                                 <p className="text-sm font-semibold text-gray-700">Selected seats</p>
-                                <p className="text-xs text-gray-500">{selectedSeatDetails.length} of {passengerCount} seat(s)</p>
+                                <p className="text-xs text-gray-500">{assignedSeatCount} of {passengerCount} seat(s)</p>
+                                <p className="text-xs text-gray-500 mt-1">Meals selected: {selectedMealDetails.filter(Boolean).length}</p>
                             </div>
                             <div className="text-right">
-                                <p className="text-xs text-gray-500">Total seat cost</p>
-                                <p className="text-xl font-bold text-[#635BEE]">₹{totalSeatCost.toLocaleString("en-IN")}</p>
+                                <p className="text-xs text-gray-500">Seat charges · {formatCurrency(totalSeatCost)}</p>
+                                <p className="text-xs text-gray-500">Meal charges · {formatCurrency(totalMealCost)}</p>
+                                <p className="text-sm font-semibold text-gray-700 mt-1">Total booking cost</p>
+                                <p className="text-xl font-bold text-[#635BEE]">{formatCurrency(totalBookingCost)}</p>
                             </div>
                         </div>
                         {/* Passengers Info */}
@@ -663,6 +880,96 @@ const Ticket2 = () => {
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Meal selection: ask first, reveal menu only after Yes */}
+                                        <div className="mt-5 border-t border-gray-100 pt-4">
+                                            <div className="mb-3">
+                                                <h3 className="text-sm font-semibold text-gray-700">
+                                                    Meal preference
+                                                </h3>
+                                                <p className="text-sm text-gray-500 mt-1">
+                                                    Would Passenger {index + 1} like a meal?
+                                                </p>
+                                            </div>
+
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleMealPreference(index, true)}
+                                                    aria-pressed={passengers[index].mealRequired === true}
+                                                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
+                                                        passengers[index].mealRequired === true
+                                                            ? "border-[#635BEE] bg-indigo-50 text-[#423EE1] ring-2 ring-indigo-100"
+                                                            : "border-gray-200 bg-white text-gray-600 hover:border-indigo-200"
+                                                    }`}
+                                                >
+                                                    Yes, I need a meal
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleMealPreference(index, false)}
+                                                    aria-pressed={passengers[index].mealRequired === false}
+                                                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
+                                                        passengers[index].mealRequired === false
+                                                            ? "border-[#635BEE] bg-indigo-50 text-[#423EE1] ring-2 ring-indigo-100"
+                                                            : "border-gray-200 bg-white text-gray-600 hover:border-indigo-200"
+                                                    }`}
+                                                >
+                                                    No meal, thank you
+                                                </button>
+                                            </div>
+
+                                            {passengers[index].mealRequired === true && (
+                                                <div className="mt-4">
+                                                    <p className="text-xs font-semibold text-gray-600 mb-3">
+                                                        Choose one meal option
+                                                    </p>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        {MEAL_OPTIONS.map(meal => (
+                                                            <button
+                                                                key={meal.id}
+                                                                type="button"
+                                                                onClick={() => handleMealSelection(index, meal.id)}
+                                                                aria-pressed={passengers[index].selectedMeal === meal.id}
+                                                                className={`rounded-lg border p-3 text-left transition-all ${
+                                                                    passengers[index].selectedMeal === meal.id
+                                                                        ? "border-[#635BEE] bg-indigo-50 ring-2 ring-indigo-100"
+                                                                        : "border-gray-200 bg-white hover:border-indigo-200"
+                                                                }`}
+                                                            >
+                                                                <span className="flex items-start justify-between gap-2">
+                                                                    <span className="text-sm font-semibold text-gray-800">
+                                                                        {meal.name}
+                                                                    </span>
+                                                                    <span className="shrink-0 text-xs font-bold text-[#423EE1]">
+                                                                        {meal.price === 0 ? "FREE" : formatCurrency(meal.price)}
+                                                                    </span>
+                                                                </span>
+                                                                <span className="block text-xs text-gray-500 mt-1">
+                                                                    {meal.description}
+                                                                </span>
+                                                                {passengers[index].selectedMeal === meal.id && (
+                                                                    <span className="block text-xs font-semibold text-[#423EE1] mt-2">
+                                                                        ✓ Selected
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {!passengers[index].selectedMeal && (
+                                                        <p className="text-xs text-amber-600 mt-2" role="status">
+                                                            Please choose one meal, or select “No meal, thank you”.
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {passengers[index].mealRequired === false && (
+                                                <p className="text-xs text-gray-500 mt-3">
+                                                    No meal selected. No meal charges will be added.
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
                                 )
                             )}
@@ -709,7 +1016,7 @@ const Ticket2 = () => {
                                             <div className="flex flex-col gap-1 min-w-[100px]">
                                                 <p className="text-gray-400 text-sm">Seat number</p>
                                                 <h2 className="text-gray-600 text-lg font-medium">
-                                                    {selectedSeats[index] || "Not selected"}
+                                                    {passenger.assignedSeat || "Not selected"}
                                                 </h2>
                                                 <p className="text-gray-400 text-xs">Seat price</p>
                                                 <h3 className="text-gray-700 text-sm font-semibold">
@@ -717,6 +1024,25 @@ const Ticket2 = () => {
                                                         ? `₹${selectedSeatDetails[index].price.toLocaleString("en-IN")}`
                                                         : "—"}
                                                 </h3>
+                                            </div>
+
+                                            {/* Selected Meal */}
+                                            <div className="flex flex-col gap-1 min-w-[150px]">
+                                                <p className="text-gray-400 text-sm">Meal</p>
+                                                <h2 className="text-gray-700 text-sm font-semibold">
+                                                    {selectedMealDetails[index]?.name || (
+                                                        passenger.mealRequired === false
+                                                            ? "Not required"
+                                                            : passenger.mealRequired === true
+                                                                ? "Choose a meal"
+                                                                : "Not decided"
+                                                    )}
+                                                </h2>
+                                                <span className="text-xs text-gray-400">
+                                                    {selectedMealDetails[index]
+                                                        ? formatCurrency(selectedMealDetails[index].price)
+                                                        : "No meal charge"}
+                                                </span>
                                             </div>
 
                                         </div>
@@ -727,11 +1053,14 @@ const Ticket2 = () => {
 
                                 {/* Total and Action Buttons */}
                                 <div className="flex items-center gap-4 shrink-0">
-                                    <div className="flex flex-col min-w-[105px]">
-                                        <span className="text-xs text-gray-400">Total seat cost</span>
-                                        <strong className="text-xl text-[#635BEE]">
-                                            ₹{totalSeatCost.toLocaleString("en-IN")}
-                                        </strong>
+                                    <div className="text-right min-w-[145px]">
+                                        <p className="text-sm text-gray-400">Total booking cost</p>
+                                        <p className="text-2xl font-bold text-[#423EE1]" aria-live="polite">
+                                            {formatCurrency(totalBookingCost)}
+                                        </p>
+                                        <p className="text-[11px] text-gray-400 whitespace-nowrap">
+                                            Seats {formatCurrency(totalSeatCost)} + Meals {formatCurrency(totalMealCost)}
+                                        </p>
                                     </div>
 
                                     <button
