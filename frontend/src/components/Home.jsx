@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom'
 
 // Context data
 import { flightDataContext } from '../contexts/FlightData';
-import { AllFlightDataContext } from '../contexts/allFlightData';
+import { AllFlightDataContext } from '../contexts/AllFlightData.jsx';
 
 const Home = () => {
 
