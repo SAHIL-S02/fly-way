@@ -94,12 +94,14 @@ const MEAL_OPTIONS = [
     }
 ];
 
-const formatCurrency = (amount) =>
-    new Intl.NumberFormat("en-IN", {
+const formatCurrency = (amount) => {
+    const numericAmount = Number(amount);
+    return new Intl.NumberFormat("en-IN", {
         style: "currency",
         currency: "INR",
         maximumFractionDigits: 0
-    }).format(amount);
+    }).format(Number.isFinite(numericAmount) ? numericAmount : 0);
+};
 
 const createEmptyPassenger = () => ({
     name: "",
@@ -139,11 +141,15 @@ const createSeats = () => {
 const Ticket2 = () => {
     const [showBookedModal, setShowBookedModal] = useState(false);
 
-    const {flightData} = useContext(flightDataContext);
-    const [seats, setSeats] = useState(createSeats);
-    const passengerCount = Math.max(
-        1,
-        Number(flightData?.passengers) || 2
+    // Guard context values and the passenger count before building the page.
+    const flightContext = useContext(flightDataContext);
+    const flightData = flightContext?.flightData ?? {};
+    const [seats] = useState(createSeats);
+
+    const requestedPassengerCount = Math.floor(Number(flightData?.passengers) || 2);
+    const passengerCount = Math.min(
+        Math.max(requestedPassengerCount, 1),
+        28 * SEAT_LETTERS.length
     );
 
     const [passengers, setPassengers] = useState(
@@ -168,11 +174,21 @@ const Ticket2 = () => {
 
 
     const formatDate = (dateString) => {
-        if (!dateString) return "";
+        if (typeof dateString !== "string") return "";
 
-        const [year, month, day] = dateString.split("-").map(Number);
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+        if (!match) return "";
 
+        const [, yearString, monthString, dayString] = match;
+        const year = Number(yearString);
+        const month = Number(monthString);
+        const day = Number(dayString);
         const date = new Date(year, month - 1, day);
+
+        // Reject impossible dates instead of allowing JavaScript to normalize them.
+        if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+            return "";
+        }
 
         return date.toLocaleDateString("en-US", {
             month: "short",
@@ -182,6 +198,8 @@ const Ticket2 = () => {
 
     // Handle passenger input changes
     const handlePassengerChange = (index, field, value) => {
+        if (!Number.isInteger(index) || index < 0 || index >= passengerCount) return;
+
         setPassengers(prev =>
             prev.map((passenger, i) =>
                 i === index
@@ -193,6 +211,8 @@ const Ticket2 = () => {
 
     // Ask each passenger whether they need a meal before showing the menu.
     const handleMealPreference = (index, mealRequired) => {
+        if (!Number.isInteger(index) || index < 0 || index >= passengerCount || typeof mealRequired !== "boolean") return;
+
         setPassengers(prev =>
             prev.map((passenger, i) =>
                 i === index
@@ -207,6 +227,13 @@ const Ticket2 = () => {
     };
 
     const handleMealSelection = (index, mealId) => {
+        if (
+            !Number.isInteger(index) ||
+            index < 0 ||
+            index >= passengerCount ||
+            !MEAL_OPTIONS.some(meal => meal.id === mealId)
+        ) return;
+
         setPassengers(prev =>
             prev.map((passenger, i) =>
                 i === index && passenger.mealRequired === true
@@ -223,16 +250,20 @@ const Ticket2 = () => {
     // Each passenger owns at most one seat. This is the source of truth for
     // assignments, so switching passengers never loses previous selections.
     const selectedSeatDetails = passengers.map(passenger => {
-        if (!passenger.assignedSeat) return null;
+        const assignedSeat = passenger?.assignedSeat;
+        if (typeof assignedSeat !== "string") return null;
 
-        const match = passenger.assignedSeat.match(/^(\d+)([A-H])$/);
+        const match = /^(\d+)([A-H])$/.exec(assignedSeat);
         if (!match) return null;
 
         const rowNumber = Number(match[1]);
         const letter = match[2];
+        if (!Number.isInteger(rowNumber) || rowNumber < 1 || rowNumber > 28 || !SEAT_LETTERS.includes(letter)) {
+            return null;
+        }
 
         return {
-            seat: passenger.assignedSeat,
+            seat: assignedSeat,
             row: rowNumber,
             letter,
             ...getSeatPricing(rowNumber, letter)
@@ -273,8 +304,18 @@ const Ticket2 = () => {
     // Assign a seat to the active passenger. Selecting a different available
     // seat replaces their current one; clicking their own seat removes it.
     const handleSelection = (rowNumber, seatLetter) => {
-        if (selectedPassengerIndex === null || !selectedPassenger) {
+        if (
+            selectedPassengerIndex === null ||
+            !selectedPassenger ||
+            selectedPassengerIndex < 0 ||
+            selectedPassengerIndex >= passengers.length
+        ) {
             setAssignmentMessage("Select a passenger before choosing a seat.");
+            return;
+        }
+
+        if (!Number.isInteger(rowNumber) || rowNumber < 1 || rowNumber > 28 || !SEAT_LETTERS.includes(seatLetter)) {
+            setAssignmentMessage("Please select a valid seat.");
             return;
         }
 
@@ -319,7 +360,12 @@ const Ticket2 = () => {
     };
 
     const handleRemoveAssignedSeat = () => {
-        if (!selectedPassenger?.assignedSeat) return;
+        if (
+            selectedPassengerIndex === null ||
+            selectedPassengerIndex < 0 ||
+            selectedPassengerIndex >= passengers.length ||
+            !selectedPassenger?.assignedSeat
+        ) return;
 
         const removedSeat = selectedPassenger.assignedSeat;
         setPassengers(prev =>
@@ -371,7 +417,7 @@ const Ticket2 = () => {
                     rounded-md
                     flex flex-col justify-center items-center gap-1
                     font-semibold leading-none
-                    transition-colors
+                    transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500
                     ${getSeatStyle(status)}
                 `}
             >
@@ -384,8 +430,11 @@ const Ticket2 = () => {
     };
 
 
+    const passengerDisplayName = (passenger, index) =>
+        String(passenger?.name ?? "").trim() || `Passenger ${index + 1}`;
+
     return (
-        <div className='flex '>
+        <div className='flex flex-col lg:flex-row w-full min-w-0 overflow-x-clip pb-[45vh] sm:pb-[40vh] lg:pb-36'>
             {/* Booking Success Modal */}
             {showBookedModal && (
                 <div className="
@@ -399,11 +448,11 @@ const Ticket2 = () => {
 
                     {/* Popup Card */}
                     <div className="
-                        w-[400px]
+                        w-full max-w-[400px] max-h-[90vh] overflow-y-auto
                         bg-white
                         rounded-2xl
                         shadow-2xl
-                        p-8
+                        p-5 sm:p-8
                         flex flex-col items-center
                         animate-[popup_0.3s_ease-out]
                     ">
@@ -468,9 +517,9 @@ const Ticket2 = () => {
 
                 </div>
             )}
-            <div className='leftSide1 w-[50%] flex justify-center'>
+            <div className='leftSide1 w-full lg:w-1/2 min-w-0 flex justify-center px-2 sm:px-4 py-5 overflow-x-auto'>
 
-                <div className='w-100 h-580 bg-[#C6CAFF] rounded-t-full rounded-b-full pt-20 pb-8 flex flex-col flex-wrap items-center'>
+                <div className='w-110 h-550 shrink-0 bg-[#C6CAFF] rounded-t-full rounded-b-full pt-8 sm:pt-12 lg:pt-20 pb-6 flex flex-col items-center shrink-0'>
 
                     {/* Windows */}
                     <div className='windows flex justify-between h-10 w-[50%] mb-4'>
@@ -490,7 +539,7 @@ const Ticket2 = () => {
                             <div className='flex flex-col gap-3 py-2 rounded-t-[80%]'>
 
                                 {/* Seat labels: A B | D E F | G H */}
-                                <div className='flex items-center gap-2 mb-1'>
+                                <div className='flex items-center gap-2 mb-1 min-w-[20rem]'>
                                     <span className='w-5 shrink-0'></span>
                                     <div className='flex flex-1 justify-between'>
                                         {SEAT_GROUPS.map((group, groupIndex) => (
@@ -523,7 +572,7 @@ const Ticket2 = () => {
                                         )}
 
                                         {/* 2-3-2 seat arrangement with two aisles */}
-                                        <div className='flex items-center gap-2'>
+                                        <div className='flex items-center gap-2 min-w-[20rem]'>
                                             {/* Row number */}
                                             <span className='w-5 shrink-0 text-center text-xs text-[#8294B9]'>
                                                 {row.row}
@@ -559,17 +608,17 @@ const Ticket2 = () => {
             </div>
 
             {/* Right side */}
-            <div className='w-[50%]'>
-                <div className='sticky top-0 h-300 border-l border-l-gray-300 bg-gradient-to-br
+            <div className='w-full lg:w-1/2 min-w-0'>
+                <div className='relative lg:sticky lg:top-20 h-auto min-h-[calc(100vh-5rem)] pb-36 border-l border-l-gray-300 bg-gradient-to-br
                     from-indigo-300/20
                     via-blue-200/10
                     to-purple-300/30
                     backdrop-blur-[6px]'>
-                    <div className="head h-20 bg-[#27273F] flex ">
-                        <div className='w-[40%] border-r border-gray-600 hover:bg-[#52556F] px-5 justify-between flex items-center'>
+                    <div className="head min-h-20 h-auto bg-[#27273F] flex flex-wrap">
+                        <div className='w-full sm:w-[40%] min-w-0 border-r border-gray-600 hover:bg-[#52556F] px-3 sm:px-5 py-3 justify-between flex items-center gap-3'>
                             <div className='flex flex-col'>
-                                <p className='font-extrabold text-2xl text-white'>
-                                    {!flightData.departure? "Kolkata":flightData.departure}
+                                <p className='font-extrabold text-lg sm:text-2xl text-white min-w-0 break-words'>
+                                    {flightData.departure || "Kolkata"}
                                 </p>
                                 <p className='text-sm text-gray-500'>
                                     From
@@ -579,21 +628,21 @@ const Ticket2 = () => {
                                 ➜
                             </div>
                             <div className='flex flex-col'>
-                                <p className='font-extrabold text-2xl text-white'>
-                                    {!flightData.arrival? "Delhi":flightData.arrival}
+                                <p className='font-extrabold text-lg sm:text-2xl text-white min-w-0 break-words'>
+                                    {flightData.arrival || "Delhi"}
                                 </p>
                                 <p className='text-sm text-gray-500'>
                                     To
                                 </p>    
                             </div>
                         </div>
-                        <div className='w-[30%] border-r border-gray-600 hover:bg-[#52556F] flex flex-col justify-center px-5'>
+                        <div className='w-1/2 sm:w-[30%] min-w-0 border-r border-gray-600 hover:bg-[#52556F] flex flex-col justify-center px-3 sm:px-5 py-3'>
                             <div className='flex justify-between w-full'>
-                                <p className=' text-white text-lg font-light'>
-                                    {!flightData.date? "Feb 28" : formatDate(flightData.date)}
+                                <p className='text-white text-sm sm:text-lg font-light break-words'>
+                                    {formatDate(flightData.date) || "Feb 28"}
                                 </p>
-                                <p className='text-gray-600'>|</p>
-                                <p className=' text-white text-lg font-light'>
+                                <p className='text-gray-600 px-1'>|</p>
+                                <p className='text-white text-sm sm:text-lg font-light break-words'>
                                     7:00AM
                                 </p>
                             </div>
@@ -603,13 +652,13 @@ const Ticket2 = () => {
                                 </p>
                             </div>
                         </div>
-                        <div className='w-[30%] border-r border-gray-600 hover:bg-[#52556F] flex flex-col justify-center px-5'>
+                        <div className='w-1/2 sm:w-[30%] min-w-0 border-r border-gray-600 hover:bg-[#52556F] flex flex-col justify-center px-3 sm:px-5 py-3'>
                             <div className='flex justify-between w-full'>
-                                <p className=' text-white text-lg font-light'>
-                                    {!flightData.date? "Feb 28" : formatDate(flightData.date)}
+                                <p className='text-white text-sm sm:text-lg font-light break-words'>
+                                    {formatDate(flightData.date) || "Feb 28"}
                                 </p>
-                                <p className='text-gray-600'>|</p>
-                                <p className=' text-white text-lg font-light'>
+                                <p className='text-gray-600 px-1'>|</p>
+                                <p className='text-white text-sm sm:text-lg font-light break-words'>
                                     10:30AM
                                 </p>
                             </div>
@@ -620,7 +669,7 @@ const Ticket2 = () => {
                             </div>
                         </div>
                     </div>
-                    <div className='px-5 py-5'>
+                    <div className='px-3 sm:px-5 py-4 sm:py-5 min-w-0'>
                         {/* Seat status and pricing legend */}
                         <div className="w-full flex flex-wrap items-center gap-x-5 gap-y-3 mt-2 mb-6">
                             <div className="flex items-center gap-2">
@@ -682,7 +731,7 @@ const Ticket2 = () => {
                                         }`}
                                     >
                                         <span className="block text-xs font-semibold">
-                                            {passenger.name.trim() || `Passenger ${index + 1}`}
+                                            {passengerDisplayName(passenger, index)}
                                         </span>
                                         <span className="block text-[11px] mt-1">
                                             {passenger.assignedSeat
@@ -697,7 +746,7 @@ const Ticket2 = () => {
                                 <p className="text-xs text-gray-600">
                                     Active: <span className="font-semibold text-[#423EE1]">
                                         {selectedPassenger
-                                            ? (selectedPassenger.name.trim() || `Passenger ${selectedPassengerIndex + 1}`)
+                                            ? (passengerDisplayName(selectedPassenger, selectedPassengerIndex))
                                             : "None — select a passenger"}
                                     </span>
                                     {selectedPassenger
@@ -729,18 +778,16 @@ const Ticket2 = () => {
                             </div>
                         </div>
                         {/* Passengers Info */}
-                        <div className='h-140 rounded-xl bg-white shadow-lg overflow-y-auto p-5'>
+                        <div className='min-h-[24rem] max-h-[65vh] lg:max-h-[38rem] rounded-xl bg-white shadow-lg overflow-y-auto p-3 sm:p-5'>
 
-                            {Array.from(
-                                { length: Number(flightData.passengers) || 2 },
-                                (_, index) => (
+                            {passengers.map((passenger, index) => (
                                     <div
                                         key={index}
-                                        className='border border-gray-200 rounded-xl p-5 mb-5 hover:shadow-md transition-shadow'
+                                        className='border border-gray-200 rounded-xl p-3 sm:p-5 mb-5 hover:shadow-md transition-shadow min-w-0'
                                     >
 
                                         {/* Passenger Header */}
-                                        <div className='flex items-center justify-between mb-5'>
+                                        <div className='flex flex-wrap items-center justify-between gap-2 mb-5'>
                                             <div>
                                                 <h2 className='text-lg font-bold text-gray-800'>
                                                     Passenger {index + 1}
@@ -756,10 +803,10 @@ const Ticket2 = () => {
                                         </div>
 
                                         {/* Form Fields */}
-                                        <div className='grid grid-cols-2 gap-4'>
+                                        <div className='grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 min-w-0'>
 
                                             {/* Full Name */}
-                                            <div className='col-span-2 flex flex-col gap-1'>
+                                            <div className='col-span-1 sm:col-span-2 flex flex-col gap-1 min-w-0'>
                                                 <label className='text-sm font-medium text-gray-600'>
                                                     Full Name *
                                                 </label>
@@ -770,7 +817,7 @@ const Ticket2 = () => {
                                                     onChange={(e) =>
                                                         handlePassengerChange(index, "name", e.target.value)
                                                     }
-                                                    className="w-full h-11 border border-gray-200 rounded-lg px-3"
+                                                    className="w-full min-w-0 h-11 border border-gray-200 rounded-lg px-3"
                                                 />
                                             </div>
 
@@ -788,7 +835,7 @@ const Ticket2 = () => {
                                                     onChange={(e) =>
                                                         handlePassengerChange(index, "age", e.target.value)
                                                     }
-                                                    className="w-full h-11 border border-gray-200 rounded-lg px-3"
+                                                    className="w-full min-w-0 h-11 border border-gray-200 rounded-lg px-3"
                                                 />
                                             </div>
 
@@ -802,7 +849,7 @@ const Ticket2 = () => {
                                                     onChange={(e) =>
                                                         handlePassengerChange(index, "gender", e.target.value)
                                                     }
-                                                    className="w-full h-11 border border-gray-200 rounded-lg px-3"
+                                                    className="w-full min-w-0 h-11 border border-gray-200 rounded-lg px-3"
                                                 >
                                                     <option value="">Select Gender</option>
                                                     <option value="male">Male</option>
@@ -812,7 +859,7 @@ const Ticket2 = () => {
                                             </div>
 
                                             {/* Email */}
-                                            <div className='col-span-2 flex flex-col gap-1'>
+                                            <div className='col-span-1 sm:col-span-2 flex flex-col gap-1 min-w-0'>
                                                 <label className='text-sm font-medium text-gray-600'>
                                                     Email Address *
                                                 </label>
@@ -823,12 +870,12 @@ const Ticket2 = () => {
                                                     onChange={(e) =>
                                                         handlePassengerChange(index, "email", e.target.value)
                                                     }
-                                                    className="w-full h-11 border border-gray-200 rounded-lg px-3"
+                                                    className="w-full min-w-0 h-11 border border-gray-200 rounded-lg px-3"
                                                 />
                                             </div>
 
                                             {/* Phone */}
-                                            <div className='col-span-2 flex flex-col gap-1'>
+                                            <div className='col-span-1 sm:col-span-2 flex flex-col gap-1 min-w-0'>
                                                 <label className='text-sm font-medium text-gray-600'>
                                                     Phone Number *
                                                 </label>
@@ -839,12 +886,12 @@ const Ticket2 = () => {
                                                     onChange={(e) =>
                                                         handlePassengerChange(index, "phone", e.target.value)
                                                     }
-                                                    className="w-full h-11 border border-gray-200 rounded-lg px-3"
+                                                    className="w-full min-w-0 h-11 border border-gray-200 rounded-lg px-3"
                                                 />
                                             </div>
 
                                             {/* Emergency Contact */}
-                                            <div className='col-span-2 border-t border-gray-100 pt-4 mt-2'>
+                                            <div className='col-span-1 sm:col-span-2 border-t border-gray-100 pt-4 mt-2 min-w-0'>
                                                 <h3 className='text-sm font-semibold text-gray-700 mb-3'>
                                                     Emergency Contact
                                                 </h3>
@@ -860,7 +907,7 @@ const Ticket2 = () => {
                                                         onChange={(e) =>
                                                             handlePassengerChange(index, "emergencyName", e.target.value)
                                                         }
-                                                        className="w-full h-11 border border-gray-200 rounded-lg px-3"
+                                                        className="w-full min-w-0 h-11 border border-gray-200 rounded-lg px-3"
                                                     />
                                                 </div>
 
@@ -875,7 +922,7 @@ const Ticket2 = () => {
                                                         onChange={(e) =>
                                                             handlePassengerChange(index, "emergencyPhone", e.target.value)
                                                         }
-                                                        className="w-full h-11 border border-gray-200 rounded-lg px-3"
+                                                        className="w-full min-w-0 h-11 border border-gray-200 rounded-lg px-3"
                                                     />
                                                 </div>
                                             </div>
@@ -971,89 +1018,28 @@ const Ticket2 = () => {
                                             )}
                                         </div>
                                     </div>
-                                )
-                            )}
+                                ))}
                         </div>
                         {/* Dynamic Bottom Booking Bar */}
                         <div className="
-                            fixed bottom-0 left-0 w-full
-                            h-[120px]
+                            fixed inset-x-0 bottom-0 w-full
+                            min-h-[120px] h-auto max-h-[45vh] lg:h-[120px] lg:max-h-none
+                            overflow-y-auto lg:overflow-visible
                             bg-white/90
                             backdrop-blur-[5px]
                             border-t border-gray-200
                             shadow-[0_-4px_20px_rgba(0,0,0,0.05)]
-                            flex items-center
+                            flex flex-col lg:flex-row items-stretch lg:items-center
                             z-50
                         ">
 
                             {/* Passenger Details */}
-                            <div className="flex-1 min-w-0 flex items-center justify-between px-8 gap-6">
+                            <div className="w-full min-w-0 flex flex-col lg:flex-row items-stretch lg:items-center justify-between px-3 sm:px-5 lg:px-8 py-3 lg:py-0 gap-3 lg:gap-6">
 
-                                {/* Dynamic Passenger Information */}
-                                <div className="flex items-center gap-8 flex-1 min-w-0 overflow-x-auto">
-
-                                    {passengers.map((passenger, index) => (
-
-                                        <div
-                                            key={index}
-                                            className="flex items-center gap-8 shrink-0"
-                                        >
-
-                                            {/* Passenger Name */}
-                                            <div className="flex flex-col gap-1 min-w-[150px]">
-
-                                                <p className="text-gray-400 text-base">
-                                                    Passenger {index + 1}
-                                                </p>
-
-                                                <h2 className="text-gray-600 text-xl font-medium truncate">
-                                                    {passenger.name.trim() || "Not entered"}
-                                                </h2>
-
-                                            </div>
-
-                                            {/* Seat Number and Price */}
-                                            <div className="flex flex-col gap-1 min-w-[100px]">
-                                                <p className="text-gray-400 text-sm">Seat number</p>
-                                                <h2 className="text-gray-600 text-lg font-medium">
-                                                    {passenger.assignedSeat || "Not selected"}
-                                                </h2>
-                                                <p className="text-gray-400 text-xs">Seat price</p>
-                                                <h3 className="text-gray-700 text-sm font-semibold">
-                                                    {selectedSeatDetails[index]
-                                                        ? `₹${selectedSeatDetails[index].price.toLocaleString("en-IN")}`
-                                                        : "—"}
-                                                </h3>
-                                            </div>
-
-                                            {/* Selected Meal */}
-                                            <div className="flex flex-col gap-1 min-w-[150px]">
-                                                <p className="text-gray-400 text-sm">Meal</p>
-                                                <h2 className="text-gray-700 text-sm font-semibold">
-                                                    {selectedMealDetails[index]?.name || (
-                                                        passenger.mealRequired === false
-                                                            ? "Not required"
-                                                            : passenger.mealRequired === true
-                                                                ? "Choose a meal"
-                                                                : "Not decided"
-                                                    )}
-                                                </h2>
-                                                <span className="text-xs text-gray-400">
-                                                    {selectedMealDetails[index]
-                                                        ? formatCurrency(selectedMealDetails[index].price)
-                                                        : "No meal charge"}
-                                                </span>
-                                            </div>
-
-                                        </div>
-
-                                    ))}
-
-                                </div>
-
+                                
                                 {/* Total and Action Buttons */}
-                                <div className="flex items-center gap-4 shrink-0">
-                                    <div className="text-right min-w-[145px]">
+                                <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 sm:gap-3 lg:gap-4 w-full lg:w-auto shrink-0">
+                                    <div className="text-left sm:text-right min-w-[135px] sm:min-w-[145px]">
                                         <p className="text-sm text-gray-400">Total booking cost</p>
                                         <p className="text-2xl font-bold text-[#423EE1]" aria-live="polite">
                                             {formatCurrency(totalBookingCost)}
@@ -1066,10 +1052,10 @@ const Ticket2 = () => {
                                     <button
                                         type="button"
                                         className="
-                                            px-6 py-4
+                                            px-3 sm:px-5 lg:px-6 py-2 sm:py-3 lg:py-4
                                             border border-[#635BEE]
                                             text-[#635BEE]
-                                            rounded-md text-lg
+                                            rounded-md text-sm sm:text-base lg:text-lg
                                             hover:bg-indigo-50
                                             transition-all
                                         "
@@ -1081,10 +1067,10 @@ const Ticket2 = () => {
                                         type="button"
                                         onClick={() => setShowBookedModal(true)}
                                         className="
-                                            px-7 py-4
+                                            px-3 sm:px-5 lg:px-7 py-2 sm:py-3 lg:py-4
                                             bg-[#635BEE]
                                             text-white
-                                            rounded-md text-lg
+                                            rounded-md text-sm sm:text-base lg:text-lg
                                             hover:bg-[#5048D8]
                                             transition-all
                                             shadow-md
