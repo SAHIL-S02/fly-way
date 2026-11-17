@@ -1,16 +1,37 @@
-# React + Vite
+# Fly Way — Frontend Application
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> Flight Seat Selection & Passenger Management System
 
-Currently, two official plugins are available:
+This directory contains the React 19 + Vite frontend application for **Fly Way**.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+For complete project documentation, including:
+- **Project Setup & Run Instructions**
+- **Tech Stack & Dependencies**
+- **Architecture & System Flowcharts**
+- **Seat Selection State Machine**
+- **Pricing & Calculation Logic**
+- **Design System & Fuselage Visualizer**
+- **Vercel / GitHub Pages Deployment Guide**
 
-## React Compiler
+ Please see the root [README.md](../README.md).
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+### Quick Commands
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+# Install dependencies
+npm install
+
+# Start local development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+
+# Run linter
+npm run lint
+```
